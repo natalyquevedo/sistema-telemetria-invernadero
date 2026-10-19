@@ -1,0 +1,460 @@
+[
+    {
+        "id": "7537b1f775c84d83",
+        "type": "tab",
+        "label": "Telemetría Invernadero",
+        "disabled": false,
+        "info": "Flujo de telemetría y control para invernadero inteligente.",
+        "env": []
+    },
+    {
+        "id": "mqtt_broker_emqx",
+        "type": "mqtt-broker",
+        "name": "Broker EMQX Cloud",
+        "broker": "broker.emqx.io",
+        "port": "1883",
+        "clientid": "NodeRED_Invernadero_Cliente",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": "4",
+        "keepalive": "60",
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
+    },
+    {
+        "id": "mysql_db_config",
+        "type": "MySQLdatabase",
+        "name": "MySQL Local",
+        "host": "127.0.0.1",
+        "port": "3306",
+        "db": "iot",
+        "tz": "",
+        "charset": "UTF8"
+    },
+    {
+        "id": "tab_invernadero",
+        "type": "ui_tab",
+        "name": "Monitoreo Invernadero",
+        "icon": "local_florist",
+        "disabled": false,
+        "hidden": false
+    },
+    {
+        "id": "group_alertas",
+        "type": "ui_group",
+        "name": "Panel de Notificaciones",
+        "tab": "tab_invernadero",
+        "order": 1,
+        "disp": true,
+        "width": "6",
+        "collapse": false
+    },
+    {
+        "id": "group_sensores",
+        "type": "ui_group",
+        "name": "Variables Microclimáticas",
+        "tab": "tab_invernadero",
+        "order": 2,
+        "disp": true,
+        "width": "6",
+        "collapse": false
+    },
+    {
+        "id": "group_control",
+        "type": "ui_group",
+        "name": "Control de Riego",
+        "tab": "tab_invernadero",
+        "order": 3,
+        "disp": true,
+        "width": "6",
+        "collapse": false
+    },
+    {
+        "id": "mqtt_in_telemetria",
+        "type": "mqtt in",
+        "z": "7537b1f775c84d83",
+        "name": "Telemetría EMQX",
+        "topic": "invernadero/telemetria",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "mqtt_broker_emqx",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 130,
+        "y": 240,
+        "wires": [
+            [
+                "fn_sanitizar_bd",
+                "fn_despachador"
+            ]
+        ]
+    },
+    {
+        "id": "fn_sanitizar_bd",
+        "type": "function",
+        "z": "7537b1f775c84d83",
+        "name": "Sanitizar e INSERT Parametrizado",
+        "func": "let data = msg.payload;\n\n// 1. Descartar si el sensor reportó código de error (Capa 1.3 y Capa 2.3)\nif (data.error && data.error !== 0) {\n    node.warn(`Lectura descartada: sensor ${data.sensor} con error ${data.error}`);\n    return null;\n}\n\nlet valor = parseFloat(data.valor);\nif (isNaN(valor)) return null;\n\n// 2. Sentencia INSERT parametrizada (Capa 3.3)\nmsg.topic = \"INSERT INTO telemetria (sensor, valor) VALUES (?, ?);\";\nmsg.payload = [data.sensor, valor];\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 450,
+        "y": 160,
+        "wires": [
+            [
+                "mysql_insert"
+            ]
+        ]
+    },
+    {
+        "id": "mysql_insert",
+        "type": "mysql",
+        "z": "7537b1f775c84d83",
+        "mydb": "mysql_db_config",
+        "name": "Guardar en MySQL",
+        "x": 730,
+        "y": 160,
+        "wires": [
+            [
+                "debug_bd_ok"
+            ]
+        ]
+    },
+    {
+        "id": "debug_bd_ok",
+        "type": "debug",
+        "z": "7537b1f775c84d83",
+        "name": "Resultado BD",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 960,
+        "y": 160,
+        "wires": []
+    },
+    {
+        "id": "fn_despachador",
+        "type": "function",
+        "z": "7537b1f775c84d83",
+        "name": "Despachador a Dashboard y Alertas",
+        "func": "let data = msg.payload;\nlet hora = new Date().toLocaleTimeString();\n\n// Salida 4: Alerta si el hardware reporta error\nif (data.error && data.error !== 0) {\n    let desc = data.error === 101 ? \"Falla sensor DHT11\" : \"Sensor de suelo desconectado\";\n    return [null, null, null, { payload: `[${hora}] ❌ ERROR: ${desc} (Código: ${data.error})` }];\n}\n\nlet val = parseFloat(data.valor);\nif (isNaN(val)) return null;\nlet out = { payload: val };\n\n// Salida 1: Temperatura\nif (data.sensor === \"temperatura\") {\n    return [out, null, null, null];\n}\n// Salida 2: Humedad Aire\nif (data.sensor === \"humedad_aire\") {\n    return [null, out, null, null];\n}\n// Salida 3: Humedad Suelo\nif (data.sensor === \"humedad_suelo\") {\n    return [null, null, out, null];\n}\n\nreturn null;",
+        "outputs": 4,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 450,
+        "y": 320,
+        "wires": [
+            [
+                "ui_gauge_temp",
+                "ui_chart_temp",
+                "fn_alerta_temp"
+            ],
+            [
+                "ui_gauge_hum_aire",
+                "ui_chart_hum_aire",
+                "fn_alerta_hum"
+            ],
+            [
+                "ui_gauge_hum_suelo"
+            ],
+            [
+                "ui_toast_alerta",
+                "ui_text_alerta"
+            ]
+        ]
+    },
+    {
+        "id": "fn_alerta_temp",
+        "type": "function",
+        "z": "7537b1f775c84d83",
+        "name": "Validar Alerta Temp (>28°C)",
+        "func": "let val = msg.payload;\nif (val > 28) {\n    let hora = new Date().toLocaleTimeString();\n    return { payload: `[${hora}] ⚠️ ALERTA: Temp crítica alta: ${val.toFixed(1)}°C (>28°C)` };\n}\nreturn null;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 750,
+        "y": 200,
+        "wires": [
+            [
+                "ui_toast_alerta",
+                "ui_text_alerta"
+            ]
+        ]
+    },
+    {
+        "id": "fn_alerta_hum",
+        "type": "function",
+        "z": "7537b1f775c84d83",
+        "name": "Validar Alerta Hum (30%-50%)",
+        "func": "let val = msg.payload;\nif (val < 30 || val > 50) {\n    let hora = new Date().toLocaleTimeString();\n    let estado = val < 30 ? \"Baja\" : \"Alta\";\n    return { payload: `[${hora}] ⚠️ ALERTA: Humedad ${estado}: ${val.toFixed(1)}% (Óptimo: 30%-50%)` };\n}\nreturn null;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 750,
+        "y": 300,
+        "wires": [
+            [
+                "ui_toast_alerta",
+                "ui_text_alerta"
+            ]
+        ]
+    },
+    {
+        "id": "ui_text_alerta",
+        "type": "ui_text",
+        "z": "7537b1f775c84d83",
+        "group": "group_alertas",
+        "order": 1,
+        "width": "6",
+        "height": "2",
+        "name": "Panel Alertas",
+        "label": "Notificación en tiempo real:",
+        "format": "{{msg.payload}}",
+        "layout": "col-center",
+        "className": "",
+        "x": 1040,
+        "y": 80,
+        "wires": []
+    },
+    {
+        "id": "ui_toast_alerta",
+        "type": "ui_toast",
+        "z": "7537b1f775c84d83",
+        "position": "top right",
+        "displayTime": "5",
+        "highlight": "red",
+        "outputs": 0,
+        "ok": "OK",
+        "cancel": "",
+        "raw": false,
+        "className": "",
+        "x": 1040,
+        "y": 40,
+        "wires": []
+    },
+    {
+        "id": "ui_gauge_temp",
+        "type": "ui_gauge",
+        "z": "7537b1f775c84d83",
+        "name": "Temperatura (°C)",
+        "group": "group_sensores",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "gtype": "gage",
+        "title": "Temperatura Aire",
+        "label": "°C",
+        "format": "{{value}}",
+        "min": 0,
+        "max": "50",
+        "colors": [
+            "#00b5ad",
+            "#e65100",
+            "#ca3c3c"
+        ],
+        "seg1": "18",
+        "seg2": "28",
+        "x": 750,
+        "y": 240,
+        "wires": []
+    },
+    {
+        "id": "ui_chart_temp",
+        "type": "ui_chart",
+        "z": "7537b1f775c84d83",
+        "name": "Histórico Temperatura",
+        "group": "group_sensores",
+        "order": 4,
+        "width": "6",
+        "height": "4",
+        "label": "Histórico Temperatura (1h)",
+        "chartType": "line",
+        "legend": "false",
+        "xformat": "HH:mm:ss",
+        "interpolate": "linear",
+        "nodata": "Sin datos",
+        "ymin": "0",
+        "ymax": "50",
+        "removeOlder": 1,
+        "removeOlderPoints": "",
+        "removeOlderUnit": "3600",
+        "cutout": 0,
+        "useOneColor": false,
+        "colors": [
+            "#ff7f0e",
+            "#aec7e8",
+            "#1f77b4"
+        ],
+        "outputs": 1,
+        "x": 760,
+        "y": 280,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "ui_gauge_hum_aire",
+        "type": "ui_gauge",
+        "z": "7537b1f775c84d83",
+        "name": "Humedad Aire (%)",
+        "group": "group_sensores",
+        "order": 2,
+        "width": 0,
+        "height": 0,
+        "gtype": "gage",
+        "title": "Humedad Relativa",
+        "label": "%",
+        "format": "{{value}}",
+        "min": 0,
+        "max": "100",
+        "colors": [
+            "#ca3c3c",
+            "#00b5ad",
+            "#e65100"
+        ],
+        "seg1": "30",
+        "seg2": "50",
+        "x": 750,
+        "y": 340,
+        "wires": []
+    },
+    {
+        "id": "ui_chart_hum_aire",
+        "type": "ui_chart",
+        "z": "7537b1f775c84d83",
+        "name": "Histórico Humedad",
+        "group": "group_sensores",
+        "order": 5,
+        "width": "6",
+        "height": "4",
+        "label": "Histórico Humedad (1h)",
+        "chartType": "line",
+        "legend": "false",
+        "xformat": "HH:mm:ss",
+        "interpolate": "linear",
+        "nodata": "Sin datos",
+        "ymin": "0",
+        "ymax": "100",
+        "removeOlder": 1,
+        "removeOlderPoints": "",
+        "removeOlderUnit": "3600",
+        "cutout": 0,
+        "useOneColor": false,
+        "colors": [
+            "#1f77b4",
+            "#aec7e8",
+            "#ff7f0e"
+        ],
+        "outputs": 1,
+        "x": 760,
+        "y": 380,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "ui_gauge_hum_suelo",
+        "type": "ui_gauge",
+        "z": "7537b1f775c84d83",
+        "name": "Humedad Suelo (%)",
+        "group": "group_sensores",
+        "order": 3,
+        "width": 0,
+        "height": 0,
+        "gtype": "gage",
+        "title": "Humedad Sustrato",
+        "label": "%",
+        "format": "{{value}}",
+        "min": 0,
+        "max": "100",
+        "colors": [
+            "#ca3c3c",
+            "#52c41a",
+            "#1f77b4"
+        ],
+        "seg1": "30",
+        "seg2": "70",
+        "x": 760,
+        "y": 440,
+        "wires": []
+    },
+    {
+        "id": "ui_switch_bomba",
+        "type": "ui_switch",
+        "z": "7537b1f775c84d83",
+        "name": "Interruptor Bomba",
+        "label": "Activar Bomba de Riego",
+        "tooltip": "",
+        "group": "group_control",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "passthru": true,
+        "decouple": "false",
+        "topic": "topic",
+        "topicType": "msg",
+        "style": "",
+        "onvalue": "ON",
+        "onvalueType": "str",
+        "onicon": "",
+        "oncolor": "",
+        "offvalue": "OFF",
+        "offvalueType": "str",
+        "officon": "",
+        "offcolor": "",
+        "animate": false,
+        "x": 150,
+        "y": 520,
+        "wires": [
+            [
+                "mqtt_out_bomba"
+            ]
+        ]
+    },
+    {
+        "id": "mqtt_out_bomba",
+        "type": "mqtt out",
+        "z": "7537b1f775c84d83",
+        "name": "Comando Bomba",
+        "topic": "invernadero/bomba/control",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "mqtt_broker_emqx",
+        "x": 450,
+        "y": 520,
+        "wires": []
+    }
+]

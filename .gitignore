@@ -1,0 +1,19 @@
+# Compilaciones y temporales
+*.o
+*.d
+*.bin
+*.elf
+*.hex
+build/
+.cache/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.bak
+*~
+
+# Arduino
+*.temp
+.arduino/
