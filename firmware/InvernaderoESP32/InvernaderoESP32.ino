@@ -2,12 +2,15 @@
 #include "sensorDHT.h"
 #include "SensorSuelo.h"
 #include "telemetria.h"
+#include "Bomba.h"
 
 // ==========================================
 // CONFIGURACIÓN DE RED Y BROKER (EMQX)
 // ==========================================
-const char* WIFI_SSID   = "Naty";
+const char* WIFI_SSID   = "Naty";              // Red principal (Nataly)
 const char* WIFI_PASS   = "natt123Q";
+// const char* WIFI_SSID   = "FAMILIA WILCHES"; // Red alternativa (Reichel)
+// const char* WIFI_PASS   = "victoria2020";
 const char* MQTT_BROKER = "broker.emqx.io";
 const int   MQTT_PORT   = 1883;
 
@@ -18,19 +21,23 @@ const char* TOPIC_TEMP   = "invernadero/temperatura";
 const char* TOPIC_HUM    = "invernadero/humedad_aire";
 const char* TOPIC_SUELO  = "invernadero/humedad_suelo";
 const char* TOPIC_JSON   = "invernadero/telemetria";
+const char* TOPIC_BOMBA  = "invernadero/bomba/control";
 
 // ==========================================
-// PINES
+// PINES Y CONFIGURACIÓN DEL RELÉ
 // ==========================================
-const int PIN_DHT   = 27;  // Sensor de aire DHT11
-const int PIN_SUELO = 34;  // Sensor analógico de suelo (ADC1 GPIO 34)
-const int PIN_BOMBA = 2;   // Actuador bomba de riego / LED indicador
+const int PIN_DHT        = 27;  // Sensor de aire DHT11
+const int PIN_SUELO      = 34;  // Sensor analógico de suelo (ADC1 GPIO 34)
+const int PIN_RELE       = 26;  // Pin IN del módulo Relé para la bomba
+const int PIN_LED_ESTADO = 2;   // LED indicador de estado en placa
+const bool RELE_ACTIVO_BAJO = true;
 
 // ==========================================
 // INSTANCIAS DE CLASES
 // ==========================================
 SensorDHT   sensorAire(PIN_DHT, DHT11);
 SensorSuelo sensorSuelo(PIN_SUELO);
+Bomba       bomba(PIN_RELE, PIN_LED_ESTADO, RELE_ACTIVO_BAJO);
 Telemetria  telemetria(WIFI_SSID, WIFI_PASS, MQTT_BROKER, MQTT_PORT, "ESP32_Invernadero_UNAL");
 
 // ==========================================
@@ -46,16 +53,19 @@ void callbackBomba(char* topic, uint8_t* payload, unsigned int length) {
         msg += (char)payload[i];
     }
     msg.trim();
+    msg.toUpperCase();
 
-    Serial.print("[COMANDO BOMBA RECIBIDO]: ");
+    Serial.print("[COMANDO BOMBA RECIBIDO en ");
+    Serial.print(topic);
+    Serial.print("]: ");
     Serial.println(msg);
 
-    if (msg == "ON") {
-        digitalWrite(PIN_BOMBA, HIGH);
-        Serial.println(">>> BOMBA: ACTIVADA");
-    } else if (msg == "OFF") {
-        digitalWrite(PIN_BOMBA, LOW);
-        Serial.println(">>> BOMBA: DESACTIVADA");
+    if (msg == "ON" || msg == "TRUE" || msg == "1") {
+        bomba.encender();
+        Serial.println(">>> BOMBA: ACTIVADA (Relé cerrado)");
+    } else if (msg == "OFF" || msg == "FALSE" || msg == "0") {
+        bomba.apagar();
+        Serial.println(">>> BOMBA: DESACTIVADA (Relé abierto)");
     }
 }
 
@@ -66,8 +76,7 @@ void setup() {
     Serial.println("   SISTEMA DE TELEMETRIA INVERNADERO      ");
     Serial.println("==========================================");
 
-    pinMode(PIN_BOMBA, OUTPUT);
-    digitalWrite(PIN_BOMBA, LOW);
+    bomba.begin();
 
     sensorAire.begin();
     sensorSuelo.begin();

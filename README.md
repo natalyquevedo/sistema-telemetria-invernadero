@@ -30,7 +30,7 @@ Este proyecto implementa una solución completa de Internet de las Cosas (IoT) d
 * **Sensores:**
   * **DHT11 (GPIO 27):** Monitoreo de temperatura y humedad relativa del aire.
   * **Sensor de Suelo (GPIO 34 - ADC1):** Medición analógica calibrada de la humedad del sustrato.
-* **Actuador:** Relé / LED indicador (GPIO 2) para el encendido y apagado de la bomba de riego.
+* **Actuador:** Módulo Relé (GPIO 26) y LED indicador (GPIO 2) para el encendido y apagado de la bomba de riego, gestionados mediante la clase modular Bomba.
 * **Firmware No Bloqueante:** Programación orientada a objetos en C++ basada estrictamente en `millis()`, sin uso de `delay()`.
 * **Manejo de Errores:** Métodos `verificarError()` en cada clase de sensor; si un sensor falla o se desconecta, se reporta un código de error específico (`101` para DHT11, `102` para suelo) en lugar de inyectar datos nulos o valores basura.
 
@@ -65,6 +65,8 @@ sistema-telemetria-invernadero/
 ├── firmware/
 │   └── InvernaderoESP32/
 │       ├── InvernaderoESP32.ino   # Sketch principal
+│       ├── Bomba.h                # Clase modular control relé/bomba
+│       ├── Bomba.cpp              # Implementación control relé y LED
 │       ├── telemetria.h           # Cabecera de gestión MQTT/WiFi
 │       ├── telemetria.cpp         # Implementación de telemetria
 │       ├── SensorSuelo.h          # Clase sensor analógico de suelo
